@@ -28,8 +28,10 @@ from spam_detector import (
     SPAM_WORDS, MODELS
 )
 
-MODEL_PATH = "spam_model.pkl"
-DATA_PATH  = "spam_data.csv"
+# Always resolve paths relative to this file — works locally AND on Streamlit Cloud
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "spam_model.pkl")
+DATA_PATH  = os.path.join(BASE_DIR, "spam_data.csv")
 
 # ─────────────────────────────────────────────
 # Page config
@@ -81,7 +83,10 @@ def get_model():
             bundle = pickle.load(f)
         return bundle["clf"], bundle["tfidf"]
 
-    df = pd.read_csv(DATA_PATH)
+    if os.path.exists(DATA_PATH):
+        df = pd.read_csv(DATA_PATH)
+    else:
+        df = _generate_fallback_data()
     df["label_num"] = (df["label"] == "spam").astype(int)
     X_train, _, y_train, _ = train_test_split(
         df["text"], df["label_num"], test_size=0.2,
@@ -93,9 +98,92 @@ def get_model():
     return clf, tfidf
 
 
+def _generate_fallback_data():
+    """Generate dataset inline if CSV is missing (fallback for Streamlit Cloud)."""
+    import numpy as np
+    np.random.seed(42)
+    ham = [
+        "Hey, are you free for lunch tomorrow?",
+        "Can you send me the report when you get a chance?",
+        "I will be late for the meeting, please start without me.",
+        "Happy birthday! Hope you have a great day.",
+        "What time does the movie start tonight?",
+        "Did you see the game last night? Amazing finish!",
+        "Can we reschedule our call to Thursday?",
+        "The package arrived safely, thank you!",
+        "Just checking in, how are you doing?",
+        "Meeting notes from today are attached.",
+        "Please review the attached document and let me know your thoughts.",
+        "I finished the project, ready for your review.",
+        "Mom said dinner is at 7pm on Sunday.",
+        "Do not forget to bring the charger tomorrow.",
+        "Thanks for the help yesterday, really appreciate it.",
+        "Your invoice has been processed and payment confirmed.",
+        "The conference is in Chicago this year, hotel is booked.",
+        "Let me know if you need anything from the store.",
+        "We are moving the team standup to 10am.",
+        "Great work on the presentation, the client loved it.",
+        "Library books are due back by Friday.",
+        "Your appointment is confirmed for Monday at 2pm.",
+        "I sent you the login credentials via secure email.",
+        "The kids soccer practice is cancelled due to rain.",
+        "Can you pick up coffee on your way in?",
+        "I need the quarterly numbers by end of day.",
+        "Flight is delayed by 2 hours, update your pickup time.",
+        "Just finished reading that book you recommended, loved it.",
+        "Order has been shipped, estimated delivery in 3 days.",
+        "Team lunch on Friday at the Italian place downtown.",
+    ]
+    spam = [
+        "WINNER! You have been selected for a 1000 dollar prize. Call now to claim!",
+        "Congratulations! You won a free iPhone. Click here to collect your prize immediately.",
+        "URGENT: Your account will be suspended. Verify now or lose access forever.",
+        "Make 5000 dollars a week from home! No experience needed. Limited slots!",
+        "FREE ENTRY: Win a luxury vacation. Text WIN to 85023 now!",
+        "Your loan has been pre-approved! Get 10000 dollars instantly. Apply now!",
+        "Hot singles in your area want to meet you tonight. Click here!",
+        "You have unclaimed cash waiting. Act now before it expires!",
+        "Lowest mortgage rates GUARANTEED. Refinance today and save thousands!",
+        "BUY NOW: Replica watches, designer bags at 90% off. Limited time offer!",
+        "ALERT: Suspicious activity detected. Click to secure your account immediately.",
+        "Earn 500 per day doing surveys from home. Sign up for FREE now!",
+        "CONGRATULATIONS: Your number was drawn in our weekly lottery! Claim prize!",
+        "Buy cheap meds online without prescription. Lowest prices guaranteed!",
+        "You are the 1000000th visitor! Claim your exclusive reward before it expires.",
+        "Double your investment in 30 days! Our AI trading bot guarantees returns!",
+        "FREE gift card just for you! Click the link below to redeem your 500 prize.",
+        "WARNING: Your computer has viruses! Download our FREE scanner now!",
+        "Lose 30 pounds in 30 days! Doctors hate this one weird trick!",
+        "LAST CHANCE: Your warranty is expiring. Call us now to avoid penalties.",
+        "You have been chosen for our exclusive VIP membership. Activate FREE trial!",
+        "Make money online from anywhere in the world. Thousands already earning big!",
+        "Your PayPal account is limited. Log in now to restore access before 24hrs!",
+        "SPECIAL OFFER: Get all channels for free forever. One time payment only!",
+        "Urgent response required: You have an unclaimed inheritance of 4.5 million!",
+        "Work from home, be your own boss. Earn up to 10000 monthly guaranteed!",
+        "Congratulations! As a valued customer you have been selected to receive a reward.",
+        "Your credit score can be erased! Call us to remove all negative items now.",
+        "CASINO BONUS: Deposit 100 and get 500 FREE. Play now, withdraw anytime!",
+        "FREE SMS: Reply STOP to opt out. You have won a brand new Samsung phone!",
+    ]
+    def vary(msgs, n):
+        out = []
+        while len(out) < n:
+            out.append(msgs[np.random.randint(len(msgs))])
+        return out
+    rows = (
+        [{"label": "ham",  "text": t} for t in vary(ham,  3900)] +
+        [{"label": "spam", "text": t} for t in vary(spam, 1100)]
+    )
+    return pd.DataFrame(rows).sample(frac=1, random_state=42).reset_index(drop=True)
+
+
 @st.cache_data(show_spinner="Loading dataset…")
 def get_data():
-    df = pd.read_csv(DATA_PATH)
+    if os.path.exists(DATA_PATH):
+        df = pd.read_csv(DATA_PATH)
+    else:
+        df = _generate_fallback_data()
     df["label_num"]  = (df["label"] == "spam").astype(int)
     df["char_count"] = df["text"].str.len()
     df["word_count"] = df["text"].str.split().str.len()
